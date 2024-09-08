@@ -1,0 +1,148 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+Displays what ports are used or open on your localhost.
+"""
+
+import errno
+import getopt
+import socket
+
+PORT_MAX = 65535
+
+def get_ports_state ():
+    """
+    Sorts the port numbers by use state.
+    """
+
+    ports_used = []
+    ports_open = []
+    ports_err = []
+    
+    port = 0
+    while port <= PORT_MAX:
+
+        sckt = None
+
+        try:
+            # Connects to the port...
+            sckt = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
+            res = sckt.bind( ( "127.0.0.1", port ) )
+            
+            # ... If the connection went OK, the port is open...
+            ports_open.append( port )
+            
+        except socket.error as e:
+            # ... If the error indicates that it is used, adds it to these...
+            if e.errno == errno.EADDRINUSE:
+                ports_used.append( port )
+                
+            # ... In all other cases, adds it in the errors.
+            else:
+                ports_err.append( port )
+            
+        finally:
+        
+            # Closes the socket.
+            if sckt:
+                sckt.close()
+                
+            port = port + 1
+            
+    return { "used" : ports_used, "open" : ports_open, "err" : ports_err }
+
+
+def reduce_ports (ports):
+    """
+    Reduces a list of ports as to contain either individual port numbers or 
+    ranges of ports in tuples.
+    """
+    
+    reduced = []
+    x, y = None, None
+    
+    for port in ports :
+        if x is None:
+            x, y = port, port
+            continue
+        
+        # If the last port of the list is the max, no point going further.
+        if port == PORT_MAX:
+            reduced.append((x,PORT_MAX))
+            break
+            
+        # If there has been a jump between two ports in the list
+        # (eg, 1023 and 1025)...
+        elif port > (y+1):
+        
+            # ... Includes the port(s) in the list (as a single port or range).
+            if x == y :
+                reduced.append(x)
+            else:
+                reduced.append((x,y))
+            x, y = port, port
+        
+        # In case there is no jump, keeps on parsing the list.
+        else:
+            y = port
+            
+    # In case there are no jumps in the list, reduces it nonetheless.
+    if not reduced:
+        if x == y:
+            reduced = [x]
+        else:
+            reduced = [(x,y)]
+            
+    return reduced
+        
+
+def print_ports ( ports ):
+    """
+    Prints a list of ports elegantly.
+    """
+    
+    str_elems = []
+    
+    # For each port list...
+    for index, port_toi in enumerate( reduce_ports( ports ) ):
+    
+        # ... If the entry is a tuple, prettifies it...
+        if type(port_toi) is tuple:
+            str_elem = f'from {port_toi[0]} to {port_toi[1]}'
+            if index == 0:
+                str_elem = str_elem.capitalize()
+                
+        # ... Otherwise it is an int and displays it as such.
+        else:
+            str_elem = f'{port_toi}'
+            
+        str_elems.append(str_elem)
+            
+    print('; '.join(str_elems) + '.')
+
+#
+# The main execution:
+#
+
+ports_state = get_ports_state()
+
+# Displays the used ports.
+if ports_state["used"]:
+    print('The following ports are used:')
+    print_ports( ports_state["used"] )
+else:
+    print("Not a single port is being used! That's odd.")
+
+# Displays the open ports.
+if ports_state["open"]:
+    print('The following ports are open:')
+    print_ports( ports_state["open"] )
+else:
+    print("No open port remains! That's weird.")
+
+# Displays the ports in error.
+if ports_state["err"]:
+    print(f'Could not find the state of ports (you might need to use sudo):')
+    print_ports( ports_state["err"] )
+
